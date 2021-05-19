@@ -15,6 +15,14 @@ def read_log():
     log_list = glob.iglob('log/**.txt')  # ログファイルリスト
     power_list = []  # 消費電力リスト
     speed_list = []  # 採掘速度リスト
+    power_dict = {
+        'time': [],
+        'power(W)': []
+    }
+    speed_dict = {
+        'time': [],
+        'speed(MH/s)': []
+    }
 
     # ログファイルごとに処理
     for log in log_list:
@@ -37,39 +45,50 @@ def read_log():
                 if line[:10] == 'GPUs power':
                     end = line.find(' W')
                     # print(timestamp + ' Power ' + line[12:18])
-                    power_list.append(timestamp + ',' + line[12:end])  # 電力行はタイムスタンプがないので1行前のを使用
+                    # power_list.append(timestamp + ',' + line[12:end])  # 電力行はタイムスタンプがないので1行前のを使用
+                    power_dict['time'].append(timestamp)  # 電力行はタイムスタンプがないので1行前のを使用
+                    power_dict['power(W)'].append(line[12:end])
                 # 採掘速度取得
                 elif line[35:50] == 'Effective speed':
                     timestamp = line[:23]
                     timestamp = convert_timestamp(timestamp)
                     # print(timestamp + ' EffSpped ' + line[52:57])
-                    speed_list.append(timestamp + ',,' + line[52:57])
+                    # speed_list.append(timestamp + ',,' + line[52:57])
+                    speed_dict['time'].append(timestamp)
+                    speed_dict['speed(MH/s)'].append(line[52:57])
 
-    return power_list, speed_list
+    return power_dict, speed_dict
 
 
 # csv作成
-def write_csv(outcsv, power_list, speed_list):
+def write_csv(outcsv, power_dict, speed_dict):
     """
     :param outcsv: 出力先csv
-    :param power_list: 消費電力リスト
-    :param speed_list: 採掘速度リスト
+    :param power_dict: 消費電力辞書
+    :param speed_dict: 採掘速度辞書
     """
-    with open(outcsv, 'w') as fw:
-        fw.write(',power,speed\n')
-        for line in power_list:
-            fw.write(line)
-            fw.write('\n')
-        for line in speed_list:
-            fw.write(line)
-            fw.write('\n')
+    power_df = pd.DataFrame.from_dict(power_dict)
+    speed_df = pd.DataFrame.from_dict(speed_dict)
+
+    out_df = pd.merge(power_df, speed_df, how='outer')
+    out_df.to_csv(outcsv, index=False)
+
+    # with open(outcsv, 'w') as fw:
+    #     fw.write(',power,speed\n')
+    #     for line in power_list:
+    #         fw.write(line)
+    #         fw.write('\n')
+    #     for line in speed_list:
+    #         fw.write(line)
+    #         fw.write('\n')
+    return power_df, speed_df
 
 
 # Excel作成
-def write_excel(power_list, speed_list, outcsv, report):
+def write_excel(power_dict, speed_dict, outcsv, report):
     """
-    :param power_list: 消費電力リスト
-    :param speed_list: 採掘速度リスト
+    :param power_dict: 消費電力辞書
+    :param speed_dict: 採掘速度辞書
     :param outcsv: write_csvで保存したデータ
     :param report: 出力先Excel
     :return: csvを読み込んだDataframe
@@ -91,14 +110,14 @@ def write_excel(power_list, speed_list, outcsv, report):
     pos_y = 1
 
     # y軸データ
-    values_power = Reference(ws, min_row=1, max_row=len(power_list), min_col=2, max_col=2)
-    values_speed = Reference(ws, min_row=len(power_list)+2, max_row=ws.max_row, min_col=3, max_col=3)
+    values_power = Reference(ws, min_row=1, max_row=len(power_dict['time']), min_col=2, max_col=2)
+    values_speed = Reference(ws, min_row=len(power_dict['time'])+2, max_row=ws.max_row, min_col=3, max_col=3)
     # values = Reference(ws, min_row=1, max_row=ws.max_row, min_col=2, max_col=3)
     chart.legend.legendPos = 'b'
 
     # x軸データ
-    x_axis_power = Reference(ws, min_row=2, max_row=len(power_list), min_col=1, max_col=1)
-    x_axis_speed = Reference(ws, min_row=len(power_list)+2, max_row=ws.max_row, min_col=1, max_col=1)
+    x_axis_power = Reference(ws, min_row=2, max_row=len(power_dict['time']), min_col=1, max_col=1)
+    x_axis_speed = Reference(ws, min_row=len(power_dict['time'])+2, max_row=ws.max_row, min_col=1, max_col=1)
     # x_axis = Reference(ws, min_row=2, max_row=ws.max_row, min_col=1, max_col=1)
     # chart.set_categories(x_axis)
 
@@ -122,11 +141,11 @@ def calculate_profit(df):
 
 
 def main():
-    power_list, speed_list = read_log()
+    power_dict, speed_dict = read_log()
     outcsv = 'output.csv'
     report = 'output.xlsx'
-    write_csv(outcsv, power_list, speed_list)
-    df = write_excel(power_list, speed_list, outcsv, report)
+    write_csv(outcsv, power_dict, speed_dict)
+    df = write_excel(power_dict, speed_dict, outcsv, report)
 
 
 
