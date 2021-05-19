@@ -1,15 +1,22 @@
-import sys
-import os
 import glob
 import openpyxl
-from openpyxl.chart import ScatterChart, Reference, BarChart, Series
-
-log_list = glob.iglob('log/**.txt')
-power_list = []
-speed_list = []
+from openpyxl.chart import ScatterChart, Reference, Series
+import pandas as pd
 
 
+# ログファイル処理
 def read_log():
+    # ログのタイムスタンプをExcelの形式に変化する関数
+    def convert_timestamp(timestamp:str):
+        timestamp = timestamp[:4] + '/' + timestamp[5:7] + '/' + timestamp[8:10] + ' ' + timestamp[11:]
+        return timestamp
+
+    # ログ読み込み
+    log_list = glob.iglob('log/**.txt')  # ログファイルリスト
+    power_list = []  # 消費電力リスト
+    speed_list = []  # 採掘速度リスト
+
+    # ログファイルごとに処理
     for log in log_list:
         print(log)
         with open(log, 'r') as f:
@@ -19,23 +26,35 @@ def read_log():
                     break
                 elif line == '\n':
                     continue
+
+                # タイムスタンプ
                 timestamp = line[:23]
-                timestamp = timestamp[:4] + '/' + timestamp[5:7] + '/' + timestamp[8:10] + ' ' + timestamp[11:]
+                timestamp = convert_timestamp(timestamp)
+
                 line = f.readline()
+
+                # 消費電力取得
                 if line[:10] == 'GPUs power':
                     end = line.find(' W')
                     # print(timestamp + ' Power ' + line[12:18])
-                    power_list.append(timestamp + ',' + line[12:end])
+                    power_list.append(timestamp + ',' + line[12:end])  # 電力行はタイムスタンプがないので1行前のを使用
+                # 採掘速度取得
                 elif line[35:50] == 'Effective speed':
                     timestamp = line[:23]
-                    timestamp = timestamp[:4] + '/' + timestamp[5:7] + '/' + timestamp[8:10] + ' ' + timestamp[11:]
+                    timestamp = convert_timestamp(timestamp)
                     # print(timestamp + ' EffSpped ' + line[52:57])
                     speed_list.append(timestamp + ',,' + line[52:57])
 
     return power_list, speed_list
 
 
-def write_csv(outcsv):
+# csv作成
+def write_csv(outcsv, power_list, speed_list):
+    """
+    :param outcsv: 出力先csv
+    :param power_list: 消費電力リスト
+    :param speed_list: 採掘速度リスト
+    """
     with open(outcsv, 'w') as fw:
         fw.write(',power,speed\n')
         for line in power_list:
@@ -46,20 +65,23 @@ def write_csv(outcsv):
             fw.write('\n')
 
 
+# Excel作成
 def write_excel(power_list, speed_list, outcsv, report):
-
-    import pandas as pd
-
-    df = pd.read_csv(outcsv)
-    df.iloc[:,0] = pd.to_datetime(df.iloc[:,0])
-    with pd.ExcelWriter(report) as writer:
+    """
+    :param power_list: 消費電力リスト
+    :param speed_list: 採掘速度リスト
+    :param outcsv: write_csvで保存したデータ
+    :param report: 出力先Excel
+    :return: csvを読み込んだDataframe
+    """
+    df = pd.read_csv(outcsv)  # csv読み込み
+    df.iloc[:,0] = pd.to_datetime(df.iloc[:,0])  # タイムスタンプをdatetime形式に変更
+    with pd.ExcelWriter(report) as writer:  # Excelにデータ出力
         df.to_excel(writer, index=False)
 
+    # Excel読み込み
     wb = openpyxl.load_workbook(report)
     ws = wb.active
-
-    # for idx in range(2, ws.max_row+1):
-    #     ws.cell(row=idx, column=1).number_format = 'yyyy/mm/dd hh:mm:ss.000'
 
     # グラフのサイズ、位置を指定
     chart = ScatterChart()
@@ -80,26 +102,32 @@ def write_excel(power_list, speed_list, outcsv, report):
     # x_axis = Reference(ws, min_row=2, max_row=ws.max_row, min_col=1, max_col=1)
     # chart.set_categories(x_axis)
 
+    # 電力データをチャートに追加
     series_power = Series(values_power, x_axis_power, title_from_data=True)
     chart.series.append(series_power)
+    # 速度データをチャートに追加
     series_speed = Series(values_speed, x_axis_speed, title_from_data=True)
     chart.series.append(series_speed)
-    # series = Series(values, x_axis, title_from_data=True)
-    # chart.series.append(series)
 
+    # チャート描画
     ws.add_chart(chart, ws.cell(row=pos_y, column=pos_x).coordinate)
 
     wb.save(report)
 
-    return
+    return df
+
+
+def calculate_profit(df):
+    pass
 
 
 def main():
     power_list, speed_list = read_log()
     outcsv = 'output.csv'
     report = 'output.xlsx'
-    write_csv(outcsv)
-    write_excel(power_list, speed_list, outcsv, report)
+    write_csv(outcsv, power_list, speed_list)
+    df = write_excel(power_list, speed_list, outcsv, report)
+
 
 
 if __name__ == '__main__':
